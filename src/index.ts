@@ -6,25 +6,22 @@ import { SystemBrain } from './brain/system-brain.js';
 
 const brain = new SystemBrain();
 
-const server = new McpServer({
-  name: 'quantum-agent',
-  version: '1.0.0',
-});
+const server = new McpServer({ name: 'quantum-agent', version: '1.2.0' });
 
-// ─── quantum-reason ───
-server.tool(
+server.registerTool(
   'quantum-reason',
-  'Multi-provider reasoning with adaptive possibility exploration, quota-aware failover, and auto-resume.',
   {
-    question: z.string(),
-    mode: z.enum(['fast', 'medium', 'high', 'unlimited']).default('medium'),
-    preferred_provider: z.string().optional(),
-    max_runtime_hours: z.number().optional().default(720),
+    description: 'Multi-provider reasoning with failover + quota-aware pause. Phase 3: returns status=candidate with verified=false for weak heuristic.',
+    inputSchema: {
+      question: z.string(),
+      mode: z.enum(['fast', 'medium', 'high', 'unlimited']).default('medium'),
+      preferred_provider: z.string().optional(),
+      max_runtime_hours: z.number().optional().default(720),
+    },
   },
   async ({ question, mode, preferred_provider, max_runtime_hours }) => {
     const result = await brain.run({
-      question,
-      mode,
+      question, mode,
       preferredProvider: preferred_provider,
       maxRuntimeHours: max_runtime_hours,
     });
@@ -34,54 +31,47 @@ server.tool(
   }
 );
 
-// ─── list-providers ───
-server.tool(
+server.registerTool(
   'list-providers',
-  'Show all configured providers, their models, and connection status.',
-  {},
+  {
+    description: 'List providers (API keys redacted).',
+    inputSchema: {},
+  },
   async () => ({
-    content: [
-      {
-        type: 'text',
-        text: JSON.stringify(brain.registry.list(), null, 2),
-      },
-    ],
+    content: [{
+      type: 'text',
+      text: JSON.stringify(brain.registry.listSafe(), null, 2),  // ⭐ no keys
+    }],
   })
 );
 
-// ─── brain-status ───
-server.tool(
+server.registerTool(
   'brain-status',
-  'Show environment, providers, quota, and paused tasks.',
-  {},
+  {
+    description: 'Environment, quota, paused tasks.',
+    inputSchema: {},
+  },
   async () => {
     const ids = brain.registry.getActive().map((p) => p.id);
     return {
-      content: [
-        {
-          type: 'text',
-          text: JSON.stringify(
-            {
-              environment: brain.env,
-              providers: brain.registry.list(),
-              quota: brain.quota.status(ids),
-              pausedTasks: brain.resume.listPaused().length,
-            },
-            null,
-            2
-          ),
-        },
-      ],
+      content: [{
+        type: 'text',
+        text: JSON.stringify({
+          environment: brain.env,
+          providers: brain.registry.listSafe(),
+          quota: brain.quota.status(ids),
+          pausedTasks: brain.resume.listPaused().length,
+        }, null, 2),
+      }],
     };
   }
 );
 
-// ─── Boot + serve ───
 async function main() {
   await brain.boot();
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error('[mcp] quantum-agent ready on stdio');
+  console.error('[mcp] quantum-agent ready');
 }
 
 main().catch((err) => {

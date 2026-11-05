@@ -4,8 +4,12 @@ dist/
 .env.local
 *.log
 .quantum-providers.json
+.quantum-providers.json.corrupt-*
 .quantum-quota.json
 .quantum-checkpoints/
 .quantum-evidence/
 .quantum-logs/
+.quantum-locks/
+.quantum-secret
 .DS_Store
+coverage/

@@ -11,34 +11,43 @@ export interface ProviderQuota {
   exhaustedAt?: number;
 }
 
-const QUOTA_FILE = path.join(process.cwd(), '.quantum-quota.json');
-
 export class QuotaTracker {
   private map: Record<string, ProviderQuota> = {};
+  private readonly filePath: string;
 
-  constructor() {
+  constructor(baseDir: string = process.cwd()) {
+    this.filePath = path.join(baseDir, '.quantum-quota.json');
     this.load();
   }
 
   private load() {
-    if (fs.existsSync(QUOTA_FILE)) {
-      try {
-        this.map = JSON.parse(fs.readFileSync(QUOTA_FILE, 'utf-8'));
-      } catch {
-        this.map = {};
-      }
+    if (!fs.existsSync(this.filePath)) return;
+    try {
+      this.map = JSON.parse(fs.readFileSync(this.filePath, 'utf-8'));
+    } catch {
+      this.map = {};
     }
   }
 
   private save() {
-    fs.writeFileSync(QUOTA_FILE, JSON.stringify(this.map, null, 2));
+    const tmp = `${this.filePath}.tmp`;
+    const data = JSON.stringify(this.map, null, 2);
+    const fd = fs.openSync(tmp, 'w', 0o600);
+    try {
+      fs.writeSync(fd, data);
+      fs.fsyncSync(fd);
+    } finally {
+      fs.closeSync(fd);
+    }
+    fs.renameSync(tmp, this.filePath);
   }
 
-  markExhausted(id: string, retryAfterSec = 60, error?: string) {
+  /** Fixes Bug 17: accepts ms (was seconds). */
+  markExhausted(id: string, cooldownMs: number, error?: string) {
     this.map[id] = {
       id,
       state: 'exhausted',
-      cooldownUntil: Date.now() + retryAfterSec * 1000,
+      cooldownUntil: Date.now() + cooldownMs,
       lastError: error,
       exhaustedAt: Date.now(),
     };
@@ -58,24 +67,23 @@ export class QuotaTracker {
     return Date.now() >= q.cooldownUntil;
   }
 
-  allExhausted(providerIds: string[]): boolean {
-    return providerIds.every((id) => !this.isAvailable(id));
+  allExhausted(ids: string[]): boolean {
+    return ids.every((id) => !this.isAvailable(id));
   }
 
-  nextAvailableIn(providerIds: string[]): number {
-    const available = providerIds.filter((id) => this.isAvailable(id));
-    if (available.length > 0) return 0;
-    const times = providerIds.map((id) => this.map[id]?.cooldownUntil ?? 0);
+  nextAvailableIn(ids: string[]): number {
+    if (ids.some((id) => this.isAvailable(id))) return 0;
+    const times = ids.map((id) => this.map[id]?.cooldownUntil ?? 0);
     return Math.max(0, Math.min(...times) - Date.now());
   }
 
-  status(providerIds: string[]) {
-    return providerIds.map((id) => {
+  status(ids: string[]) {
+    return ids.map((id) => {
       const q = this.map[id];
       return {
         id,
-        state: q?.state || 'ok',
-        cooldownUntil: q?.cooldownUntil || 0,
+        state: q?.state ?? 'ok',
+        cooldownUntil: q?.cooldownUntil ?? 0,
         lastError: q?.lastError,
         exhaustedAt: q?.exhaustedAt,
         available: this.isAvailable(id),
