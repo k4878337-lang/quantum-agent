@@ -1,0 +1,6 @@
+# Quantum Agent Core has 0 external dependencies!
+# It runs out of the box on Python 3.9+ using standard libraries (sqlite3, urllib, json, asyncio, etc.)
+
+# Optional developer tooling:
+# pytest>=7.0.0
+# black>=23.0.0
