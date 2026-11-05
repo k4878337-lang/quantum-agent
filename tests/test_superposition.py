@@ -71,6 +71,25 @@ class TestQuantumCore(unittest.TestCase):
         )
         self.assertFalse(invalid)
 
+    def test_parse_expansion_with_markdown_preamble(self):
+        engine = SuperpositionEngine()
+        llm_output = (
+            "Here is the detailed analysis of the branch:\n\n"
+            "```json\n"
+            "{\n"
+            '  "evaluation_score": 0.91,\n'
+            '  "is_exact_solution": false,\n'
+            '  "solution_code_or_proof": null,\n'
+            '  "reasoning_summary": "Promising direction",\n'
+            '  "child_branches": [{"hypothesis": "Sub-vector 1", "action_plan": "Test"}]\n'
+            "}\n"
+            "```\n\nHope this helps!"
+        )
+        parsed = engine.parse_expansion_response(llm_output)
+        self.assertEqual(parsed["score"], 0.91)
+        self.assertFalse(parsed["is_exact_solution"])
+        self.assertEqual(len(parsed["children"]), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

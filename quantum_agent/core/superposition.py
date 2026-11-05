@@ -103,19 +103,31 @@ Return strictly a JSON object with this exact structure:
 }}"""
 
     def parse_expansion_response(self, content: str) -> Dict[str, Any]:
-        """Safely parses structured JSON output from LLM responses."""
+        """Safely parses structured JSON output from LLM responses with conversational resilience."""
+        import re
+        if not content:
+            return {
+                "score": 0.3,
+                "is_exact_solution": False,
+                "solution": None,
+                "reasoning": "Empty response received.",
+                "children": []
+            }
+
+        # Extract JSON code block or innermost object
+        json_str = None
+        match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", content, re.DOTALL)
+        if match:
+            json_str = match.group(1)
+        else:
+            brace_match = re.search(r"(\{.*\})", content, re.DOTALL)
+            if brace_match:
+                json_str = brace_match.group(1)
+            else:
+                json_str = content.strip()
+
         try:
-            # Strip markdown code fences if present
-            cleaned = content.strip()
-            if cleaned.startswith("```json"):
-                cleaned = cleaned[7:]
-            elif cleaned.startswith("```"):
-                cleaned = cleaned[3:]
-            if cleaned.endswith("```"):
-                cleaned = cleaned[:-3]
-            cleaned = cleaned.strip()
-            
-            data = json.loads(cleaned)
+            data = json.loads(json_str)
             return {
                 "score": float(data.get("evaluation_score", 0.5)),
                 "is_exact_solution": bool(data.get("is_exact_solution", False)),

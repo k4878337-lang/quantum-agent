@@ -176,6 +176,13 @@ class QuantumStateDB:
         """, (session_id,))
         return cursor.fetchone()[0]
 
+    def get_state_by_id(self, state_id: int) -> Optional[Dict[str, Any]]:
+        """Retrieves a specific quantum state by its primary ID."""
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT * FROM quantum_states WHERE state_id = ?", (state_id,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
     def update_state_resolution(
         self,
         state_id: int,

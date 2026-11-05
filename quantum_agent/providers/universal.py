@@ -28,7 +28,8 @@ class UniversalAIProvider(BaseLLMProvider):
         base_url: Optional[str] = None
     ):
         self.provider = (provider or self._detect_provider()).lower()
-        self.api_key = api_key or self._get_key_for_provider(self.provider)
+        raw_key = api_key or self._get_key_for_provider(self.provider)
+        self.api_key = raw_key.strip() if raw_key else None
         self.model = model or self._get_default_model(self.provider)
         self.base_url = base_url
 
@@ -65,7 +66,7 @@ class UniversalAIProvider(BaseLLMProvider):
 
     def _get_default_model(self, provider: str) -> str:
         defaults = {
-            "gemini": "gemini-2.5-flash",
+            "gemini": "gemini-2.0-flash",
             "openai": "gpt-4o-mini",
             "anthropic": "claude-3-5-sonnet-20241022",
             "deepseek": "deepseek-chat",
@@ -154,11 +155,12 @@ class UniversalAIProvider(BaseLLMProvider):
         with urllib.request.urlopen(req, timeout=60) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             text = ""
-            candidates = data.get("candidates", [])
+            candidates = data.get("candidates") or []
             if candidates:
-                parts = candidates[0].get("content", {}).get("parts", [])
-                text = "".join(p.get("text", "") for p in parts)
-            tokens = data.get("usageMetadata", {}).get("totalTokenCount", 0)
+                cand_content = candidates[0].get("content") or {}
+                parts = cand_content.get("parts") or []
+                text = "".join(p.get("text", "") for p in parts if isinstance(p, dict))
+            tokens = (data.get("usageMetadata") or {}).get("totalTokenCount", 0)
             return LLMResponse(content=text, tokens_used=tokens, model=self.model, raw=data)
 
     def _call_openai_compatible(self, prompt: str, system_prompt: Optional[str], temp: float, max_tokens: int) -> LLMResponse:
@@ -167,10 +169,18 @@ class UniversalAIProvider(BaseLLMProvider):
             "deepseek": "https://api.deepseek.com/chat/completions",
             "groq": "https://api.groq.com/openai/v1/chat/completions",
             "openrouter": "https://openrouter.ai/api/v1/chat/completions",
-            "ollama": self.base_url or "http://localhost:11434/v1/chat/completions",
-            "local": self.base_url or "http://localhost:8000/v1/chat/completions"
+            "ollama": "http://localhost:11434/v1/chat/completions",
+            "local": "http://localhost:8000/v1/chat/completions"
         }
         url = endpoints.get(self.provider, endpoints["openai"])
+        if self.base_url:
+            b_url = self.base_url.rstrip("/")
+            if not b_url.endswith("/chat/completions"):
+                if not b_url.endswith("/v1"):
+                    b_url += "/v1"
+                b_url += "/chat/completions"
+            url = b_url
+
         messages = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
@@ -196,9 +206,10 @@ class UniversalAIProvider(BaseLLMProvider):
 
         with urllib.request.urlopen(req, timeout=60) as resp:
             data = json.loads(resp.read().decode("utf-8"))
-            choices = data.get("choices", [])
-            text = choices[0]["message"]["content"] if choices else ""
-            tokens = data.get("usage", {}).get("total_tokens", 0)
+            choices = data.get("choices") or []
+            first_msg = (choices[0].get("message") or {}) if choices else {}
+            text = first_msg.get("content") or first_msg.get("reasoning_content") or ""
+            tokens = (data.get("usage") or {}).get("total_tokens", 0)
             return LLMResponse(content=text, tokens_used=tokens, model=self.model, raw=data)
 
     def _call_anthropic(self, prompt: str, system_prompt: Optional[str], temp: float, max_tokens: int) -> LLMResponse:
@@ -230,9 +241,9 @@ class UniversalAIProvider(BaseLLMProvider):
 
         with urllib.request.urlopen(req, timeout=60) as resp:
             data = json.loads(resp.read().decode("utf-8"))
-            content = data.get("content", [])
-            text = "".join(c.get("text", "") for c in content if c.get("type") == "text")
-            tokens = data.get("usage", {}).get("output_tokens", 0)
+            content = data.get("content") or []
+            text = "".join(c.get("text", "") for c in content if isinstance(c, dict) and c.get("type") == "text")
+            tokens = (data.get("usage") or {}).get("output_tokens", 0)
             return LLMResponse(content=text, tokens_used=tokens, model=self.model, raw=data)
 
     def _call_simulation(self, prompt: str) -> LLMResponse:

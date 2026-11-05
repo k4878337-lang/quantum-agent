@@ -117,7 +117,7 @@ class QuantumMCPServer:
 
         elif method == "tools/call":
             tool_name = params.get("name")
-            arguments = params.get("arguments", {})
+            arguments = params.get("arguments") or {}
 
             if tool_name not in self.tools:
                 return {

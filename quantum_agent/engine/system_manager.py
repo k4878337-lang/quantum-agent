@@ -110,11 +110,12 @@ class QuantumSystemManager:
         Processes an evaluation step submitted directly by the Host AI.
         Applies constructive/destructive interference, tests convergence, and returns next priorities.
         """
-        # Fetch current state
-        pending = self.db.get_pending_states(session_id, limit=500)
-        curr_state = next((s for s in pending if s["state_id"] == state_id), None)
+        # Fetch exact state by ID
+        curr_state = self.db.get_state_by_id(state_id)
         if not curr_state:
-            return {"error": f"State ID #{state_id} not found or already collapsed in session {session_id}."}
+            return {"error": f"State ID #{state_id} not found in database."}
+        if curr_state.get("session_id") != session_id:
+            return {"error": f"State ID #{state_id} belongs to session '{curr_state.get('session_id')}', not '{session_id}'."}
 
         # Convergence test
         is_converged, confidence, evidence = self.convergence.verify_solution(

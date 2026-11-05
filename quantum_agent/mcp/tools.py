@@ -180,7 +180,9 @@ def get_mcp_tool_definitions() -> List[Dict[str, Any]]:
 
 # Handlers
 def handle_quantum_init_task(arguments: Dict[str, Any]) -> str:
-    target = arguments["target"]
+    target = arguments.get("target") or arguments.get("problem")
+    if not target:
+        return json.dumps({"error": "Missing required parameter 'target'."})
     intensity = arguments.get("intensity", "HIGH")
     session_id = arguments.get("session_id")
 
@@ -190,15 +192,30 @@ def handle_quantum_init_task(arguments: Dict[str, Any]) -> str:
 
 
 def handle_quantum_step(arguments: Dict[str, Any]) -> str:
+    session_id = arguments.get("session_id")
+    state_id = arguments.get("state_id")
+    if not session_id or state_id is None:
+        return json.dumps({"error": "Missing required parameter 'session_id' or 'state_id'."})
+
+    try:
+        evaluation_score = float(arguments.get("evaluation_score", 0.5))
+    except (ValueError, TypeError):
+        evaluation_score = 0.5
+
+    is_exact_solution = bool(arguments.get("is_exact_solution", False))
+    reasoning = arguments.get("reasoning", "Branch evaluated.")
+    solution_code_or_proof = arguments.get("solution_code_or_proof")
+    child_branches = arguments.get("child_branches")
+
     mgr = QuantumSystemManager(mode=ExecutionMode.HOST_AI_CONTROLLED)
     result = mgr.host_step(
-        session_id=arguments["session_id"],
-        state_id=arguments["state_id"],
-        evaluation_score=float(arguments["evaluation_score"]),
-        is_exact_solution=bool(arguments["is_exact_solution"]),
-        reasoning=arguments["reasoning"],
-        solution_code_or_proof=arguments.get("solution_code_or_proof"),
-        child_branches=arguments.get("child_branches")
+        session_id=session_id,
+        state_id=state_id,
+        evaluation_score=evaluation_score,
+        is_exact_solution=is_exact_solution,
+        reasoning=reasoning,
+        solution_code_or_proof=solution_code_or_proof,
+        child_branches=child_branches
     )
     return json.dumps(result, indent=2)
 
@@ -209,7 +226,9 @@ def handle_quantum_system_info(arguments: Dict[str, Any]) -> str:
 
 
 def handle_quantum_solve(arguments: Dict[str, Any]) -> str:
-    target = arguments["target"]
+    target = arguments.get("target") or arguments.get("problem")
+    if not target:
+        return json.dumps({"error": "Missing required parameter 'target'."})
     intensity = arguments.get("intensity", "FAST")
     provider = arguments.get("provider")
     model = arguments.get("model")
@@ -226,7 +245,9 @@ def handle_quantum_solve(arguments: Dict[str, Any]) -> str:
 
 
 def handle_quantum_explore_branches(arguments: Dict[str, Any]) -> str:
-    problem = arguments["problem"]
+    problem = arguments.get("problem") or arguments.get("target")
+    if not problem:
+        return json.dumps({"error": "Missing required parameter 'problem'."})
     intensity = arguments.get("intensity", "MEDIUM")
     engine = SuperpositionEngine(intensity=intensity)
     states = engine.create_initial_basis_states(problem)
@@ -237,8 +258,10 @@ def handle_quantum_explore_branches(arguments: Dict[str, Any]) -> str:
 
 
 def handle_quantum_tunnel(arguments: Dict[str, Any]) -> str:
-    target = arguments["target"]
-    bottleneck = arguments["bottleneck"]
+    target = arguments.get("target", "System Analysis")
+    bottleneck = arguments.get("bottleneck") or arguments.get("barrier") or arguments.get("error")
+    if not bottleneck:
+        return json.dumps({"error": "Missing required parameter 'bottleneck'."})
     engine = TunnelingEngine()
     
     stuck_state = {
@@ -255,13 +278,15 @@ def handle_quantum_tunnel(arguments: Dict[str, Any]) -> str:
 
 
 def handle_quantum_session_status(arguments: Dict[str, Any]) -> str:
-    session_id = arguments["session_id"]
+    session_id = arguments.get("session_id")
+    if not session_id:
+        return json.dumps({"error": "Missing required parameter 'session_id'."})
     db = QuantumStateDB()
     sessions = db.list_all_sessions()
     
     target_session = next((s for s in sessions if s["session_id"] == session_id), None)
     if not target_session:
-        return f"Error: Session '{session_id}' not found in database."
+        return json.dumps({"error": f"Session '{session_id}' not found in database."})
 
     best = db.get_best_solution(session_id)
     active = db.count_active_states(session_id)

@@ -24,8 +24,8 @@ def main():
     run_parser = subparsers.add_parser("run", help="Run Quantum Agent on a target task")
     run_parser.add_argument(
         "--target", "-t",
-        required=True,
-        help="Target problem, code, app architecture, or diagnostic objective"
+        required=False,
+        help="Target problem, code, app architecture, or diagnostic objective (optional if resuming with --session)"
     )
     run_parser.add_argument(
         "--intensity", "-i",
@@ -81,9 +81,22 @@ def main():
     args = parser.parse_args()
 
     if args.command == "run":
-        print(f"[*] Initializing Quantum Agent on: {args.target}")
+        if not args.target and not args.session:
+            run_parser.error("Either --target or --session is required.")
+
+        target = args.target or ""
+        if not target and args.session:
+            db = QuantumStateDB(args.db)
+            existing_sess = next((s for s in db.list_all_sessions() if s["session_id"] == args.session), None)
+            if existing_sess:
+                target = existing_sess["target"]
+            else:
+                print(f"[!] Session '{args.session}' not found in database '{args.db}'.")
+                return
+
+        print(f"[*] Initializing Quantum Agent on: {target}")
         scheduler = QuantumScheduler(
-            target=args.target,
+            target=target,
             session_id=args.session,
             intensity=args.intensity,
             provider_name=args.provider,

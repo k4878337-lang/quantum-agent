@@ -101,6 +101,10 @@ class QuantumScheduler:
             model=self.provider.model
         )
 
+        # Restore past target if resuming
+        if session_info.get("target") and not self.target:
+            self.target = session_info["target"]
+
         # Restore past uptime if resuming an earlier multi-day run
         past_uptime = session_info.get("accumulated_uptime", 0.0)
         past_evaluated = session_info.get("total_evaluated", 0)
@@ -126,6 +130,7 @@ class QuantumScheduler:
         self.telemetry.render_hud()
 
         last_hud_render = time.time()
+        consecutive_errors = 0
 
         # Infinite convergence loop
         while self.is_running:
@@ -184,7 +189,21 @@ class QuantumScheduler:
                     continue
 
                 if not response.is_success:
-                    # Non-fatal error on this branch, slightly penalize score and continue
+                    consecutive_errors += 1
+                    if consecutive_errors >= 5:
+                        err_msg = response.error or "Unknown provider failure"
+                        self.telemetry.last_status = f"🛑 Error: {err_msg[:42]}"
+                        self.telemetry.render_hud()
+                        self.save_checkpoint(status="PAUSED_PROVIDER_ERROR")
+                        print(f"\n[!] Provider repeated error: {err_msg}")
+                        print("[!] Pausing to prevent failure loop. Please verify your API key or network connection.")
+                        return {
+                            "session_id": self.session_id,
+                            "status": "PAUSED_PROVIDER_ERROR",
+                            "error": err_msg
+                        }
+
+                    # Non-fatal error on this single branch, slightly penalize score and continue
                     self.db.update_state_resolution(
                         state_id=state["state_id"],
                         status="SUPERPOSITION",
@@ -193,7 +212,8 @@ class QuantumScheduler:
                     )
                     continue
 
-                # Record successful response
+                # Record successful response & reset error counter
+                consecutive_errors = 0
                 self.rate_limiter.record_success()
                 parsed = self.superposition.parse_expansion_response(response.content)
 

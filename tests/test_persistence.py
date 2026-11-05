@@ -49,6 +49,11 @@ class TestPersistence(unittest.TestCase):
         self.assertIsNotNone(best)
         self.assertEqual(best["solution_code"], "code_result")
 
+        # Test get_state_by_id
+        exact_state = self.db.get_state_by_id(s1)
+        self.assertIsNotNone(exact_state)
+        self.assertEqual(exact_state["hypothesis"], "Hypothesis 1")
+
     def test_telemetry_uptime_formatting(self):
         telemetry = LiveTelemetry("Test target", intensity="MEDIUM")
         telemetry.accumulated_seconds = 90061 # 1 day, 1 hour, 1 min, 1 sec
